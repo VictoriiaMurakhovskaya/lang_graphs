@@ -7,13 +7,12 @@ from nltk.corpus import wordnet
 from nltk.stem import WordNetLemmatizer
 import math
 import numpy as np
-from networkx.algorithms.community.centrality import girvan_newman
+from networkx.algorithms import community
 import networkx as nx
 from itertools import chain, combinations
 import matplotlib.pyplot as plt
 from scipy.cluster.hierarchy import dendrogram
-from datetime import datetime
-# from networkx.algorithms.community.centrality import subset_rank_dict
+import random
 
 
 PUNCT = [c for c in string.punctuation] + [(c+c) for c in string.punctuation] + [(c+c+c) for c in string.punctuation]
@@ -115,7 +114,7 @@ def get_merge_height(sub, node_labels, subset_rank_dict):
     return float(len(sub)) + 0.8 * (subset_rank_dict[sub_tuple] - min_rank) / range
 
 
-def plot_dendrogram(G, method_to_find_community = girvan_newman):
+def plot_dendrogram(G, method_to_find_community=community.girvan_newman):
     communities = list(method_to_find_community(G))
     # building initial dict of node_id to each possible subset:
     node_id = 0
@@ -194,6 +193,45 @@ def plot_dendrogram(G, method_to_find_community = girvan_newman):
     plt.show()
 
 
+def show_attr_graph(g, pos, attr):
+    nodes = sorted(g.nodes(data=True), key=lambda x: x[1][attr])
+    gcc = g.subgraph(sorted(nx.connected_components(g), key=len, reverse=True)[0])
+
+    colors = generate_colors(nodes, attr)
+    plt.figure(figsize=(15, 15))
+    nx.draw(
+        gcc,
+        pos,
+        nodelist=[n[0] for n in nodes],
+        node_size=80,
+        node_color=colors,
+        labels=dict([(n, n[0]) for n in g.nodes()]),
+        cmap=plt.cm.cool,
+        with_labels=True
+    )
+    plt.show()
+
+
+def draw_communities(g, res):
+    subset_color = [
+        "gold",
+        "violet",
+        "limegreen",
+        "darkorange",
+    ]
+    if len(res.keys()) > len(subset_color):
+        subset_color = subset_color * (len(res.keys()) // len(subset_color) + 1)
+
+    pos = nx.spring_layout(g)
+    color = []
+    for v in g.nodes():
+        for i, words in res.items():
+            if v in words:
+                color.append(subset_color[i])
+    plt.figure(figsize=(20, 10))
+    nx.draw(g, pos, node_size=80, node_color=color, with_labels=False)
+    plt.show()
+
 
 def main(show_flag, centralities, communities):
     # nltk.download('brown')
@@ -206,8 +244,10 @@ def main(show_flag, centralities, communities):
     g, ps = create_lm_coocurance(brown.sents()[:100])
     pos = nx.spring_layout(g)
     # figsize=(8, 8) чем больше цифры здесь, тем больше картинка, все потому что отрисовка в networkx завязаы
-    plt.figure(figsize=(10, 10))
-    nx.draw(g, pos, labels=dict([(n, n[0]) for n in g.nodes()]))
+    if show_flag:
+        plt.figure(figsize=(10, 10))
+        nx.draw(g, pos, labels=dict([(n, n[0]) for n in g.nodes()]))
+        plt.show()
     # число вершин
     print(g.number_of_nodes())
 
@@ -229,69 +269,69 @@ def main(show_flag, centralities, communities):
     histogram = [list(degrees.values()).count(i) / float(nx.number_of_nodes(g)) \
                  for i in degree_values]
 
-    fig, ax = plt.subplots()
 
-    plt.title("Bar graph of degree distribution")
-    plt.bar(degree_values, histogram, width=9)
-    plt.xlabel('Degree')
-    plt.ylabel('Fraction of Nodes')
-    ax.set_xticks(degree_values)
-    ax.set_xticklabels(degree_values)
     if show_flag:
+        fig, ax = plt.subplots()
+        plt.title("Bar graph of degree distribution")
+        plt.bar(degree_values, histogram, width=9)
+        plt.xlabel('Degree')
+        plt.ylabel('Fraction of Nodes')
+        ax.set_xticks(degree_values)
+        ax.set_xticklabels(degree_values)
         plt.show()
 
-    plt.title("Histogram of degree distribution")
-    plt.hist(list(degrees.values()), bins=len(degree_values))
-    plt.xticks(np.arange(0, max(degree_values), max(degree_values) * 0.1))
     if show_flag:
+        plt.title("Histogram of degree distribution")
+        plt.hist(list(degrees.values()), bins=len(degree_values))
+        plt.xticks(np.arange(0, max(degree_values), max(degree_values) * 0.1))
         plt.show()
 
-    plt.title("Log-log plot of degree distribution")
-    plt.loglog(degree_values, histogram)
     if show_flag:
+        plt.title("Log-log plot of degree distribution")
+        plt.loglog(degree_values, histogram)
         plt.show()
 
-    plt.title("Scatter of degree distribution")
-    plt.scatter(degree_values, histogram)
     if show_flag:
+        plt.title("Scatter of degree distribution")
+        plt.scatter(degree_values, histogram)
         plt.show()
 
     degree_logs = [math.log(i) for i in degree_values]
     frequency_logs = [math.log(i) for i in histogram]
 
-    plt.title("Log-log of degree distribution")
-    plt.scatter(degree_logs, frequency_logs)
     if show_flag:
+        plt.title("Log-log of degree distribution")
+        plt.scatter(degree_logs, frequency_logs)
         plt.show()
 
     x = np.array(degree_logs)
     y = np.array(frequency_logs)
     z = np.polyfit(x, y, 1)
     m, b = z[0], z[1]
-    plt.scatter(x, y)
-    plt.plot(x, m * x + b)
-    plt.title("Log-log of degree distribution with linear regression")
     if show_flag:
+        plt.scatter(x, y)
+        plt.plot(x, m * x + b)
+        plt.title("Log-log of degree distribution with linear regression")
         plt.show()
 
     degree_sequence = sorted([d for n, d in g.degree()], reverse=True)
-    dmax = max(degree_sequence)
-
-    plt.loglog(degree_sequence, "b-", marker="o")
-    plt.title("Degree rank plot")
-    plt.ylabel("degree")
-    plt.xlabel("rank")
-
-    # draw graph in inset
-    plt.axes([0.45, 0.45, 0.45, 0.45])
     gcc = g.subgraph(sorted(nx.connected_components(g), key=len, reverse=True)[0])
-    pos = nx.spring_layout(gcc)
-    plt.axis("off")
-    nx.draw_networkx_nodes(gcc, pos, node_size=20)
-    nx.draw_networkx_edges(gcc, pos, alpha=0.4)
+
     if show_flag:
+        plt.loglog(degree_sequence, "b-", marker="o")
+        plt.title("Degree rank plot")
+        plt.ylabel("degree")
+        plt.xlabel("rank")
+
+        # draw graph in inset
+        plt.axes([0.45, 0.45, 0.45, 0.45])
+
+        pos = nx.spring_layout(gcc)
+        plt.axis("off")
+        nx.draw_networkx_nodes(gcc, pos, node_size=20)
+        nx.draw_networkx_edges(gcc, pos, alpha=0.4)
+
         plt.show()
-    print(datetime.now())
 
     """Используйте ваши знания о центральностях и об их применимости к тем или иным типам графов.
     Рассчитайте их (возможно на сабграфе), сделайте отображение графа,
@@ -301,56 +341,48 @@ def main(show_flag, centralities, communities):
     (3 points)
     Не забудь проанализировать, ведь визуализация (иногда) ключ к пониманию
     """
+    # выделение или невыделение подграфа (субграфа)
+    gs = g.copy()
 
     # Центральности. Если граф ненаправленный, то все виды центральности
     # (degree, betweenness, closeness, eigenvector)
 
     ## calculate degree centrality,
     if centralities:
-        betweenness_centrality = nx.betweenness_centrality(g)
+        dg_centr = nx.degree_centrality(gs)
+        bt_centr = nx.betweenness_centrality(gs)
+        cs_centr = nx.closeness_centrality(gs)
+        eg_centr = nx.eigenvector_centrality(gs)
+
 
         ## set degree centrality metrics on each node,
-        nx.set_node_attributes(g, betweenness_centrality, 'bc')
+        # if show_flag:
+        nx.set_node_attributes(gs, dg_centr, 'dg')
+        nx.set_node_attributes(gs, bt_centr, 'bt')
+        nx.set_node_attributes(gs, cs_centr, 'cs')
+        nx.set_node_attributes(gs, eg_centr, 'eg')
 
-        nodes = sorted(g.nodes(data=True), key = lambda x: x[1]['bc'])
-
-        colors = generate_colors(nodes, 'bc')
-        plt.figure(figsize=(15, 15))
-        layout = nx.spring_layout(g)
-        nx.draw(
-            g,
-            pos,
-            nodelist=[n[0] for n in nodes],
-            node_size=500,
-            node_color=colors,
-            labels=dict([(n, n[0]) for n in g.nodes()]),
-            cmap=plt.cm.Greens_r
-        )
+        show_attr_graph(gs, pos, 'dg')
+        show_attr_graph(gs, pos, 'bt')
+        show_attr_graph(gs, pos, 'cs')
+        show_attr_graph(gs, pos, 'eg')
 
     """Ваша задача: применить методы поиска сообществ и попытаться интерпретировать выдачу (3 points)"""
     if communities:
-        comp = girvan_newman(g)
-        res = {i: words for i, words in enumerate(tuple(sorted(c) for c in next(comp)))}
         # бинарное разбиение исходного графа на сообщества
-        print(res)
+        comp = community.girvan_newman(gs)
+        res_gm = {i: words for i, words in enumerate(tuple(sorted(c) for c in next(comp)))}
 
-        subset_color = [
-            "gold",
-            "violet",
-            "limegreen",
-            "darkorange",
-        ]
-        color = []
-        for v in g.nodes():
-            for i, words in res.items():
-                if v in words:
-                    color.append(subset_color[i])
-        plt.figure(figsize=(20, 10))
+        # алгоритм Kernighan–Lin
+        comp = community.kernighan_lin_bisection(gs)
+        res_kl = {i: list(words) for i, words in enumerate(comp)}
 
-        nx.draw(g, pos, node_color=color, with_labels=True)
-        plt.show()
+        # comp = community.greedy_modularity_communities(gs)
+        # res_gmc = {i: list(words) for i, words in enumerate(comp)}
+        # print(res_gmc.keys())
 
-
+    draw_communities(gs, res_gm)
+    draw_communities(gs, res_kl)
 
 
     # k = 2
@@ -362,6 +394,4 @@ def main(show_flag, centralities, communities):
 
 
 if __name__ == '__main__':
-    print(datetime.now())
-    main(False, False, False)
-    print(datetime.now())
+    main(False, True, True)
